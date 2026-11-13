@@ -1,0 +1,54 @@
+# Copia este archivo como config.yaml y ajústalo. Todo es opcional: sin config.yaml
+# la herramienta usa el kubeconfig estándar (KUBECONFIG o ~/.kube/config) y lista
+# todos sus contextos en la interfaz.
+
+server:
+  host: 127.0.0.1          # no exponer fuera de localhost sin una capa de autenticación
+  port: 8765
+  allowed_origins: []      # orígenes extra permitidos para el WebSocket (p. ej. un proxy)
+
+storage:
+  path: data/logs.db
+  retention_days: 7        # purga automática por antigüedad (0 = desactivada)
+  max_rows: 2000000        # tope de registros; se eliminan los más antiguos
+
+collector:
+  tail_lines: 500          # líneas de historial a pedir al iniciar el seguimiento de un contenedor
+  max_backoff_seconds: 30  # espera máxima entre reintentos si se cae la conexión
+  multiline_idle_seconds: 0.5   # espera por líneas de continuación (solo formatos de texto)
+  follow_rollouts: true         # si un pod seguido desaparece, seguir su reemplazo del mismo workload
+  exclude_containers:      # sidecars que no se siguen por defecto (se pueden marcar a mano)
+    - istio-proxy
+    - istio-init
+    - linkerd-proxy
+    - linkerd-init
+
+# Entornos con nombre (atajos). Los contextos del kubeconfig que no estén aquí
+# también aparecen en la UI. El login del proveedor se hace por fuera, por ejemplo:
+#   EKS:  aws sso login --profile <perfil> && aws eks update-kubeconfig --name <cluster> --region <region> --profile <perfil>
+#   AKS:  az login && az aks get-credentials -g <grupo> -n <cluster>
+#   GKE:  gcloud auth login && gcloud container clusters get-credentials <cluster> --region <region>
+#   OpenShift: oc login <url>
+#   Local: kind create cluster --name pods-demo   (contexto kind-pods-demo)
+environments:
+  - name: demo-local
+    context: kind-pods-demo
+    namespaces: [demo-logs]
+  # - name: qa-proyecto-x
+  #   context: arn:aws:eks:us-east-1:111122223333:cluster/mi-cluster
+  #   kubeconfig: ~/.kube/proyecto-x.yaml
+  #   namespaces: [qa]
+  # - name: en-cluster
+  #   in_cluster: true       # cuando la herramienta corre como pod con un ServiceAccount de solo lectura
+
+log_formats:
+  # El formato se detecta automáticamente por línea (json, spring_boot, logback, log4j,
+  # python, uvicorn, dotnet, klog, zap_console, http_access, logfmt, generic, plain).
+  # Si un servicio usa un patrón propio, se puede declarar con una regex con grupos
+  # con nombre: time, level, logger, thread, trace_id, message.
+  custom: []
+  #  - name: legacy_pipe
+  #    pattern: '^(?P<time>\S+) \| (?P<level>\w+) \| (?P<logger>[^|]+) \| (?P<message>.*)$'
+  overrides: []
+  #  - workload: '^legacy-'   # regex sobre el nombre del workload
+  #    format: legacy_pipe    # forzar formato (o "auto")

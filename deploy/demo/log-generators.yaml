@@ -1,0 +1,189 @@
+# Entorno de demostración con microservicios ficticios que emiten logs sintéticos
+# en distintos formatos (sin datos reales). Sirve para probar la detección de
+# formato, la agrupación multilínea, la trazabilidad por traceId y el manejo de
+# reinicios.
+#
+#   kind create cluster --name pods-demo
+#   kubectl apply -f deploy/demo/log-generators.yaml
+#
+# Todos los servicios usan el mismo traceId para la misma iteración
+# (demo-000000NN), de modo que filtrar por uno muestra el "recorrido" entre servicios.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-logs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-service          # Java / Spring Boot 3
+  namespace: demo-logs
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: orders-service } }
+  template:
+    metadata: { labels: { app: orders-service } }
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              i=0
+              while true; do
+                i=$((i+1)); t=$(printf 'demo-%08d' $i); now=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+                echo "$now  INFO 1 --- [orders-service] [nio-8080-exec-$((i%8+1))] [$t-0001] c.e.orders.OrderController       : Pedido recibido id=$i"
+                if [ $((i % 7)) -eq 0 ]; then
+                  echo "$now ERROR 1 --- [orders-service] [nio-8080-exec-1] [$t-0001] c.e.orders.OrderService          : No fue posible reservar inventario para el pedido $i"
+                  echo "java.lang.IllegalStateException: Inventario insuficiente"
+                  echo "	at com.example.orders.OrderService.reserve(OrderService.java:87)"
+                  echo "	at com.example.orders.OrderController.create(OrderController.java:41)"
+                  echo "Caused by: java.net.SocketTimeoutException: Read timed out"
+                  echo "	... 12 more"
+                elif [ $((i % 5)) -eq 0 ]; then
+                  echo "$now  WARN 1 --- [orders-service] [nio-8080-exec-2] [$t-0001] c.e.orders.PricingClient         : Reintentando consulta de precios (intento 2)"
+                fi
+                sleep 2
+              done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api            # Node.js / pino (JSON con niveles numéricos)
+  namespace: demo-logs
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payments-api } }
+  template:
+    metadata: { labels: { app: payments-api } }
+    spec:
+      containers:
+        - name: api
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              i=0
+              while true; do
+                i=$((i+1)); t=$(printf 'demo-%08d' $i)
+                ms=$(date +%s)000
+                if [ $((i % 6)) -eq 0 ]; then
+                  echo "{\"level\":50,\"time\":$ms,\"name\":\"payments\",\"traceId\":\"$t\",\"msg\":\"Pago rechazado por el proveedor\",\"err\":{\"type\":\"GatewayError\",\"stack\":\"GatewayError: 502 Bad Gateway\\n    at charge (/app/src/charge.js:22:11)\"}}"
+                else
+                  echo "{\"level\":30,\"time\":$ms,\"name\":\"payments\",\"traceId\":\"$t\",\"msg\":\"Pago autorizado\",\"amount\":$((i*10))}"
+                fi
+                sleep 2
+              done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-worker        # Python logging
+  namespace: demo-logs
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: inventory-worker } }
+  template:
+    metadata: { labels: { app: inventory-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              i=0
+              while true; do
+                i=$((i+1)); t=$(printf 'demo-%08d' $i); now=$(date -u '+%Y-%m-%d %H:%M:%S,000')
+                echo "$now - inventory.worker - INFO - Reserva procesada trace_id=$t"
+                if [ $((i % 7)) -eq 0 ]; then
+                  echo "$now - inventory.worker - ERROR - Fallo al actualizar stock trace_id=$t"
+                  echo "Traceback (most recent call last):"
+                  echo "  File \"/app/worker.py\", line 58, in update_stock"
+                  echo "    db.execute(query)"
+                  echo "TimeoutError: database did not respond in 5s"
+                fi
+                sleep 2
+              done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifications           # .NET (formato de consola por defecto, mensaje en la línea siguiente)
+  namespace: demo-logs
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: notifications } }
+  template:
+    metadata: { labels: { app: notifications } }
+    spec:
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              i=0
+              while true; do
+                i=$((i+1))
+                echo "info: Notifications.EmailSender[0]"
+                echo "      Correo enviado al cliente $i"
+                if [ $((i % 9)) -eq 0 ]; then
+                  echo "fail: Notifications.EmailSender[500]"
+                  echo "      No se pudo conectar al servidor SMTP"
+                fi
+                sleep 3
+              done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway             # nginx: log de accesos
+  namespace: demo-logs
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: api-gateway } }
+  template:
+    metadata: { labels: { app: api-gateway } }
+    spec:
+      containers:
+        - name: nginx
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              i=0
+              while true; do
+                i=$((i+1)); now=$(date -u '+%d/%b/%Y:%H:%M:%S +0000')
+                code=200; [ $((i % 6)) -eq 0 ] && code=404; [ $((i % 7)) -eq 0 ] && code=502
+                echo "10.0.0.$((i%250)) - - [$now] \"POST /api/orders HTTP/1.1\" $code 512 \"-\" \"demo-client/1.0\""
+                sleep 1
+              done
+        - name: istio-proxy     # sidecar: excluido por defecto en la UI
+          image: busybox:1.36
+          command: ["/bin/sh", "-c", "while true; do echo '[envoy] upstream ok'; sleep 10; done"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flaky-service           # Go/zap; termina con error para provocar CrashLoopBackOff
+  namespace: demo-logs
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: flaky-service } }
+  template:
+    metadata: { labels: { app: flaky-service } }
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              for i in 1 2 3 4 5; do
+                printf '%s\tINFO\tflaky\tprocesando lote %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$i"
+                sleep 3
+              done
+              printf '%s\tFATAL\tflaky\tconfiguración inválida: falta DATABASE_URL\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+              exit 1

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pods Log Viewer</title>
+<link rel="stylesheet" href="/static/style.css?v=__VERSION__" />
+</head>
+<body>
+<header>
+  <h1>Pods Log Viewer</h1>
+  <label class="field">Entorno
+    <select id="envSelect"></select>
+  </label>
+  <label class="field">Namespace
+    <select id="nsSelect" disabled></select>
+  </label>
+  <span id="connStatus" class="conn">Sin conexión</span>
+  <div class="spacer"></div>
+  <span id="wsStatus" class="conn">WS: desconectado</span>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main>
+  <aside>
+    <section>
+      <h2>Workloads y pods</h2>
+      <div class="row">
+        <button id="refreshPods" title="Volver a consultar los pods del namespace">Refrescar</button>
+        <button id="startTail" class="primary" title="Seguir los contenedores marcados">Seguir</button>
+        <button id="stopTail" class="danger" title="Detener los contenedores marcados">Detener</button>
+      </div>
+      <input type="text" id="podFilter" placeholder="Filtrar workloads/pods..." />
+      <div id="podTree" class="tree">Selecciona un entorno y un namespace.</div>
+    </section>
+    <section>
+      <h2>Streams activos</h2>
+      <div id="tailList" class="tail-list"><span class="dim">Ninguno</span></div>
+    </section>
+  </aside>
+
+  <section class="viewer">
+    <div class="toolbar">
+      <input type="text" id="searchBox" placeholder="Buscar en el mensaje..." class="grow" />
+      <label class="switch" title="Interpretar la búsqueda como expresión regular"><input type="checkbox" id="regexToggle" /> Regex</label>
+      <input type="text" id="excludeBox" placeholder="Excluir texto..." />
+      <input type="text" id="traceBox" placeholder="Trace / correlation id" />
+      <select id="workloadFilter" title="Workload"><option value="">Todos los workloads</option></select>
+      <select id="formatFilter" title="Formato de log detectado"><option value="">Todos los formatos</option></select>
+      <label class="switch" title="Mostrar solo los pods marcados en el panel izquierdo"><input type="checkbox" id="onlySelected" /> Solo marcados</label>
+    </div>
+    <div class="toolbar">
+      <div class="level-toggles" id="levelToggles"></div>
+      <label class="field">Desde <input type="datetime-local" id="sinceInput" step="1" /></label>
+      <label class="field">Hasta <input type="datetime-local" id="untilInput" step="1" /></label>
+      <select id="tzSelect" title="Zona horaria para mostrar y filtrar">
+        <option value="local">Hora local</option>
+        <option value="utc">UTC</option>
+      </select>
+      <button id="loadHistory">Consultar</button>
+      <div class="spacer"></div>
+      <label class="switch"><input type="checkbox" id="liveToggle" checked /> En vivo</label>
+      <label class="switch"><input type="checkbox" id="autoscrollToggle" checked /> Auto-scroll</label>
+      <button id="clearView">Limpiar vista</button>
+      <select id="exportFormat" title="Formato de exportación">
+        <option value="txt">TXT</option>
+        <option value="csv">CSV</option>
+        <option value="jsonl">JSONL</option>
+      </select>
+      <button id="exportBtn">Exportar</button>
+    </div>
+    <div id="logView"></div>
+    <div id="status">
+      <span id="countLabel">0 líneas</span>
+      <button id="loadMore" hidden>Cargar más antiguas</button>
+    </div>
+  </section>
+</main>
+
+<script src="/static/app.js?v=__VERSION__"></script>
+</body>
+</html>

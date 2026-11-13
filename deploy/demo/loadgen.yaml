@@ -1,0 +1,41 @@
+# Generador de carga para la prueba de rendimiento: emite TOTAL líneas logfmt
+# numeradas (seq) para poder detectar pérdidas o duplicados de forma exacta.
+# Espera START_DELAY segundos antes de empezar (tiempo para iniciar el seguimiento)
+# y luego queda inactivo. Tasa aproximada = BATCH / PAUSE líneas por segundo.
+#
+#   kubectl apply -f deploy/demo/loadgen.yaml
+#   kubectl -n demo-logs delete deploy loadgen   # al terminar
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: demo-logs
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: loadgen } }
+  template:
+    metadata: { labels: { app: loadgen } }
+    spec:
+      containers:
+        - name: gen
+          image: busybox:1.36
+          env:
+            - { name: TOTAL, value: "30000" }
+            - { name: BATCH, value: "50" }
+            - { name: PAUSE, value: "0.1" }
+            - { name: START_DELAY, value: "20" }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              sleep $START_DELAY
+              i=0
+              while [ $i -lt $TOTAL ]; do
+                j=0
+                while [ $j -lt $BATCH ] && [ $i -lt $TOTAL ]; do
+                  i=$((i+1)); j=$((j+1))
+                  echo "level=info seq=$i msg=\"carga sintética\" trace_id=load-$((i/100))"
+                done
+                sleep $PAUSE
+              done
+              echo "level=info msg=\"fin de la carga\" total=$TOTAL"
+              sleep 86400

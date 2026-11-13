@@ -1,0 +1,32 @@
+# Permisos mínimos que necesita la herramienta (solo lectura de pods y sus logs).
+# Úsalo para crear un usuario/ServiceAccount dedicado a QA en lugar de credenciales
+# con más privilegios. Ajusta el namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pods-log-viewer
+  namespace: demo-logs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pods-log-viewer
+  namespace: demo-logs
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pods-log-viewer
+  namespace: demo-logs
+subjects:
+  - kind: ServiceAccount
+    name: pods-log-viewer
+    namespace: demo-logs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pods-log-viewer
